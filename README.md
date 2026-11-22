@@ -2,7 +2,7 @@
 
 Aplicación web en desarrollo para que una empresa comercializadora de productos de consumo pueda comparar mercados por estado, municipio o alcaldía. A partir del Censo de Población y Vivienda 2020 del INEGI, un analista podrá consultar cuántas personas viven en una zona, ver su distribución por edad y comparar indicadores como el grado promedio de escolaridad.
 
-**Avance actual.** Las etapas 1 y 2 documentan el análisis de los datos, los seis escenarios de aceptación en Gherkin y el diseño de la base de datos en PostgreSQL. Hay dos scripts SQL para crear las tablas, los índices y las vistas. La siguiente etapa es la carga de los CSV con Python. Después se conectarán la API, la interfaz web y las pruebas automatizadas.
+**Avance actual.** El proyecto incluye seis escenarios de aceptación en Gherkin, los scripts de creación de la base de datos, la carga de los CSV con Python y una API de consulta en FastAPI. La interfaz web y las pruebas de interfaz están pendientes.
 
 ## Datos del INEGI
 
@@ -23,7 +23,7 @@ La carga debe conservar los ceros iniciales de las claves. Por ejemplo, `09` (Ci
 | `data/raw/` | Archivos CSV originales del INEGI. |
 | `sql/` | Scripts de creación del esquema, índices y vistas. |
 | `etl/load_censo.py` | Lectura, limpieza y carga en PostgreSQL con pandas y SQLAlchemy. |
-| `backend/` | API en FastAPI. `database.py` gestiona la conexión y `routes/censo.py` consulta las vistas. |
+| `backend/` | API en FastAPI. `db.py` gestiona la conexión. Los módulos `estados.py`, `municipios.py` y `localidades.py` de `routes/` consultan sus vistas respectivas. |
 | `frontend/` | Interfaz en HTML5, CSS y JavaScript. `js/api.js` consulta la API, `js/charts.js` dibuja las gráficas con Chart.js y `js/app.js` gestiona los filtros, el mapa y la exportación. |
 | `features/` | Escenarios en `censo_mexico.feature`, configuración de Selenium en `environment.py` y pasos de Behave en `steps/censo_steps.py`. |
 
@@ -61,6 +61,28 @@ WHERE table_schema = 'censo'
 GROUP BY table_type
 ORDER BY table_type;
 ```
+
+## Ejecutar la API
+
+Con el entorno virtual activo y desde la raíz del proyecto, instala las dependencias e inicia el servidor.
+
+```bash
+python -m pip install -r requirements.txt
+python -m uvicorn backend.main:app --reload
+```
+
+Abre [la documentación interactiva](http://127.0.0.1:8000/docs) para probar las consultas contra el censo cargado. `GET /health` comprueba que la API está en ejecución.
+
+| Ruta GET | Parámetros de consulta |
+| --- | --- |
+| `/api/estados` | `estado`, por ejemplo `Jalisco`. |
+| `/api/municipios` | `estado`, `municipio` y, opcionalmente, `rango_edad` (`0 a 14`, `15 a 64` o `65 y más`). La respuesta incluye los tres grupos para dibujar la gráfica. |
+| `/api/municipios/comparativa` | `estado`, `municipio_a` y `municipio_b` para comparar el grado promedio de escolaridad. |
+| `/api/localidades` | `estado`, `municipio` y `localidad` para consultar el indicador de 18 a 24 años y su estado de confidencialidad. Si el nombre tiene varias coincidencias, la respuesta incluye las claves y puedes precisar la consulta con `cvegeo` (nueve dígitos). |
+
+En las consultas municipales también puedes introducir la clave INEGI de tres dígitos. Por ejemplo, si buscas `San Juan Mixtepec` en Oaxaca, la API devuelve un `409` con las claves de los dos municipios para que elijas uno.
+
+Si sirves el frontend desde otro origen, define los orígenes permitidos en `.env`, por ejemplo `CORS_ORIGINS=http://localhost:5500,http://127.0.0.1:5500`. Cuando exista `frontend/index.html`, FastAPI podrá servirlo en `/` al iniciar.
 
 ## Escenarios de aceptación
 
