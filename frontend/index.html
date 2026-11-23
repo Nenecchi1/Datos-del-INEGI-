@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Censo México 2020 — INEGI</title>
   <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -66,15 +66,15 @@
           <label for="select-rango-edad">Grupo de edad</label>
           <select id="select-rango-edad">
             <option value="">Todos los grupos</option>
-            <option value="0_14">0 a 14 años</option>
-            <option value="15_64">15 a 64 años</option>
-            <option value="65_mas">65 años y más</option>
-            <option value="0a2">0 a 2 años</option>
-            <option value="18a24">18 a 24 años</option>
-            <option value="60ymas">60 años y más</option>
+            <option value="0 a 14">0 a 14 años</option>
+            <option value="15 a 64">15 a 64 años</option>
+            <option value="65 y más">65 años y más</option>
+            <option value="0 a 2">0 a 2 años</option>
+            <option value="18 a 24">18 a 24 años</option>
+            <option value="60 y más">60 años y más</option>
           </select>
         </div>
-        <button id="btn-consultar-municipio" class="btn-primary" type="submit">Consultar</button>
+        <button id="btn-consultar-municipio" class="btn-primary" type="submit" disabled>Consultar</button>
       </form>
 
       <div id="municipio-mensaje" class="alert hidden" role="alert"></div>
@@ -85,6 +85,7 @@
         <div class="split-grid">
           <div class="card">
             <h3>Distribución por grupos de edad</h3>
+            <p id="grafica-mensaje" class="hidden" role="status">No se pudo cargar la gráfica. Puedes consultar los valores en la tabla.</p>
             <div class="chart-wrap">
               <canvas id="grafica-edades"></canvas>
             </div>
@@ -128,7 +129,7 @@
             <option value="">Selecciona un municipio...</option>
           </select>
         </div>
-        <button id="btn-comparar" class="btn-primary" type="submit">Comparar</button>
+        <button id="btn-comparar" class="btn-primary" type="submit" disabled>Comparar</button>
       </form>
 
       <div id="comparativa-mensaje" class="alert hidden" role="alert"></div>

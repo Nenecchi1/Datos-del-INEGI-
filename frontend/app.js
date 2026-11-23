@@ -28,6 +28,26 @@ function ocultarMensaje(elemento) {
   elemento.classList.add("hidden");
 }
 
+async function consultarApi(ruta, parametros = {}) {
+  const query = new URLSearchParams(parametros).toString();
+  let resp;
+  try {
+    resp = await fetch(query ? ruta + "?" + query : ruta);
+  } catch {
+    throw new Error("No se pudo conectar con la API del censo.");
+  }
+  if (resp.ok) return resp.json();
+
+  const { detail } = await resp.json().catch(() => ({}));
+  if (typeof detail === "string") throw new Error(detail);
+  if (detail?.mensaje) throw new Error(detail.mensaje);
+  if (Array.isArray(detail)) {
+    const campos = detail.map((error) => error.loc?.at(-1)).filter(Boolean);
+    if (campos.length) throw new Error("Revisa los campos de la consulta: " + campos.join(", ") + ".");
+  }
+  throw new Error(`La API no pudo completar la consulta (HTTP ${resp.status}).`);
+}
+
 // --- Navegación entre pestañas ---
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -40,57 +60,58 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 
 // --- Carga inicial de entidades para los selectores ---
 async function cargarCatalogoEntidades() {
+  const selects = [
+    document.getElementById("select-entidad-mun"),
+    document.getElementById("comp-entidad"),
+  ];
   try {
-    const resp = await fetch("/api/estados");
-    if (!resp.ok) return;
-    const data = await resp.json();
-
-    const selects = [
-      document.getElementById("select-entidad-mun"),
-      document.getElementById("comp-entidad"),
-    ];
-
-    selects.forEach((select) => {
-      data.resultados.forEach((ent) => {
-        const opt = document.createElement("option");
-        opt.value = ent.nom_ent;
-        opt.textContent = ent.nom_ent;
-        select.appendChild(opt);
-      });
-    });
+    const estados = await consultarApi("/api/estados/catalogo");
+    if (!estados.length) throw new Error("El censo no tiene entidades disponibles.");
+    for (const select of selects) {
+      for (const estado of estados) select.add(new Option(estado.nom_ent, estado.nom_ent));
+    }
   } catch (err) {
-    console.error("Error cargando entidades:", err);
+    for (const id of ["municipio-mensaje", "comparativa-mensaje"]) {
+      mostrarMensaje(document.getElementById(id), err.message);
+    }
   }
 }
 
-async function cargarMunicipiosEnSelects(entidad, selects) {
+async function cargarMunicipiosEnSelects(selectorEntidad, selects, msgEl) {
+  const entidad = selectorEntidad.value;
+  ocultarMensaje(msgEl);
   selects.forEach((sel) => {
-    sel.innerHTML = '<option value="">Cargando...</option>';
+    sel.replaceChildren(new Option(entidad ? "Cargando..." : "Selecciona primero una entidad...", ""));
     sel.disabled = true;
   });
+  const boton = selectorEntidad.form.querySelector('button[type="submit"]');
+  boton.disabled = true;
+  if (!entidad) return;
 
-  if (!entidad) {
-    selects.forEach((sel) => {
-      sel.innerHTML = '<option value="">Selecciona primero una entidad...</option>';
-    });
-    return;
-  }
-
-  const resp = await fetch(`/api/municipios?entidad=${encodeURIComponent(entidad)}`);
-  const data = await resp.json();
-
-  selects.forEach((sel) => {
-    sel.innerHTML = '<option value="">Selecciona un municipio...</option>';
-    if (resp.ok && data.resultados) {
-      data.resultados.forEach((m) => {
-        const opt = document.createElement("option");
-        opt.value = m.nom_mun;
-        opt.textContent = m.nom_mun;
-        sel.appendChild(opt);
-      });
+  try {
+    const municipios = await consultarApi("/api/municipios/catalogo", { estado: entidad });
+    if (selectorEntidad.value !== entidad) return;
+    if (!municipios.length) throw new Error("No hay municipios disponibles para esta entidad.");
+    const nombres = new Set();
+    const repetidos = new Set();
+    for (const { nom_mun } of municipios) {
+      if (nombres.has(nom_mun)) repetidos.add(nom_mun);
+      nombres.add(nom_mun);
+    }
+    for (const sel of selects) {
+      sel.replaceChildren(new Option("Selecciona un municipio...", ""));
+      for (const { mun, nom_mun } of municipios) {
+        const etiqueta = repetidos.has(nom_mun) ? `${nom_mun} (${mun})` : nom_mun;
+        sel.add(new Option(etiqueta, mun));
+      }
       sel.disabled = false;
     }
-  });
+    boton.disabled = false;
+  } catch (err) {
+    if (selectorEntidad.value !== entidad) return;
+    for (const sel of selects) sel.replaceChildren(new Option("Municipios no disponibles", ""));
+    mostrarMensaje(msgEl, err.message);
+  }
 }
 
 // --- 1. Consulta Estatal ---
@@ -104,17 +125,8 @@ document.getElementById("form-estado").addEventListener("submit", async (e) => {
   contEl.innerHTML = "";
 
   try {
-    const resp = await fetch(`/api/estados?q=${encodeURIComponent(query)}`);
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      mostrarMensaje(msgEl, data.detail || "No se encontraron resultados para la entidad solicitada");
-      return;
-    }
-
-    contEl.innerHTML = data.resultados
-      .map(
-        (est) => `
+    const est = await consultarApi("/api/estados", { estado: query });
+    contEl.innerHTML = `
         <article class="card" data-entidad="${escaparHtml(est.nom_ent)}">
           <h3>${escaparHtml(est.nom_ent)}</h3>
           <ul class="metric-list">
@@ -132,17 +144,17 @@ document.getElementById("form-estado").addEventListener("submit", async (e) => {
             </li>
           </ul>
         </article>
-      `
-      )
-      .join("");
+      `;
   } catch (err) {
-    mostrarMensaje(msgEl, "Error de conexión con la API.");
+    mostrarMensaje(msgEl, err.message);
   }
 });
 
 // --- 2. Municipios y Gráficas ---
 document.getElementById("select-entidad-mun").addEventListener("change", (e) => {
-  cargarMunicipiosEnSelects(e.target.value, [document.getElementById("select-municipio")]);
+  document.getElementById("municipio-detalle").classList.add("hidden");
+  cargarMunicipiosEnSelects(e.target, [document.getElementById("select-municipio")],
+    document.getElementById("municipio-mensaje"));
 });
 
 document.getElementById("form-municipio").addEventListener("submit", async (e) => {
@@ -159,23 +171,15 @@ document.getElementById("form-municipio").addEventListener("submit", async (e) =
   detalleEl.classList.add("hidden");
   rangoBox.classList.add("hidden");
 
-  const params = new URLSearchParams({ entidad, municipio });
+  const params = new URLSearchParams({ estado: entidad, municipio });
   if (rango) params.set("rango_edad", rango);
 
   try {
-    const resp = await fetch(`/api/municipios?${params.toString()}`);
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      mostrarMensaje(msgEl, data.detail || "No se encontraron datos del municipio.");
-      return;
-    }
-
-    const mun = data.resultados[0];
+    const mun = await consultarApi("/api/municipios", params);
     detalleEl.classList.remove("hidden");
 
-    if (rango && mun.rango_seleccionado) {
-      rangoBox.innerHTML = `<strong>${escaparHtml(mun.nom_mun)} (${escaparHtml(mun.rango_seleccionado)}):</strong> <span id="valor-rango-edad">${formatearNumero(mun.poblacion_rango)}</span> habitantes`;
+    if (rango) {
+      rangoBox.innerHTML = `<strong>${escaparHtml(mun.nom_mun)} (${escaparHtml(mun.rango_edad)}):</strong> <span id="valor-rango-edad">${formatearNumero(mun.poblacion)}</span> habitantes`;
       rangoBox.classList.remove("hidden");
     }
 
@@ -183,9 +187,9 @@ document.getElementById("form-municipio").addEventListener("submit", async (e) =
       ["Entidad", mun.nom_ent],
       ["Municipio", mun.nom_mun],
       ["Población total", formatearNumero(mun.pobtot)],
-      ["0 a 14 años", formatearNumero(mun.pob0_14)],
-      ["15 a 64 años", formatearNumero(mun.pob15_64)],
-      ["65 años y más", formatearNumero(mun.pob65_mas)],
+      ["0 a 14 años", formatearNumero(mun.grupos_edad["0 a 14"])],
+      ["15 a 64 años", formatearNumero(mun.grupos_edad["15 a 64"])],
+      ["65 años y más", formatearNumero(mun.grupos_edad["65 y más"])],
       ["Grado promedio de escolaridad", `${formatearDecimal(mun.graproes)} años`],
       ["Viviendas con internet", formatearNumero(mun.vph_inter)],
     ];
@@ -196,7 +200,7 @@ document.getElementById("form-municipio").addEventListener("submit", async (e) =
 
     renderGraficaEdades(mun);
   } catch (err) {
-    mostrarMensaje(msgEl, "Error de conexión con la API.");
+    mostrarMensaje(msgEl, err.message);
   }
 });
 
@@ -206,8 +210,13 @@ function renderGraficaEdades(mun) {
     chartEdades.destroy();
   }
 
-  const valores = [mun.pob0_14, mun.pob15_64, mun.pob65_mas];
+  const valores = ["0 a 14", "15 a 64", "65 y más"].map((grupo) => mun.grupos_edad[grupo]);
   ctx.dataset.valores = JSON.stringify(valores);
+  if (typeof Chart === "undefined") {
+    document.getElementById("grafica-mensaje").classList.remove("hidden");
+    return;
+  }
+  document.getElementById("grafica-mensaje").classList.add("hidden");
 
   chartEdades = new Chart(ctx, {
     type: "bar",
@@ -237,10 +246,11 @@ function renderGraficaEdades(mun) {
 
 // --- 3. Comparación Municipal ---
 document.getElementById("comp-entidad").addEventListener("change", (e) => {
-  cargarMunicipiosEnSelects(e.target.value, [
+  document.getElementById("comparativa-resultados").replaceChildren();
+  cargarMunicipiosEnSelects(e.target, [
     document.getElementById("comp-mun-1"),
     document.getElementById("comp-mun-2"),
-  ]);
+  ], document.getElementById("comparativa-mensaje"));
 });
 
 document.getElementById("form-comparar").addEventListener("submit", async (e) => {
@@ -260,18 +270,11 @@ document.getElementById("form-comparar").addEventListener("submit", async (e) =>
     return;
   }
 
-  const params = new URLSearchParams({ entidad, m1, m2 });
-
   try {
-    const resp = await fetch(`/api/municipios/comparar?${params.toString()}`);
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      mostrarMensaje(msgEl, data.detail || "No se pudo realizar la comparación.");
-      return;
-    }
-
-    contEl.innerHTML = data.comparativa
+    const data = await consultarApi("/api/municipios/comparativa", {
+      estado: entidad, municipio_a: m1, municipio_b: m2,
+    });
+    contEl.innerHTML = data.municipios
       .map(
         (m) => `
         <article class="card" data-comp-municipio="${escaparHtml(m.nom_mun)}">
@@ -299,14 +302,14 @@ document.getElementById("form-comparar").addEventListener("submit", async (e) =>
       )
       .join("");
   } catch (err) {
-    mostrarMensaje(msgEl, "Error de conexión con la API.");
+    mostrarMensaje(msgEl, err.message);
   }
 });
 
 // --- 4. Localidades y Confidencialidad ---
 function renderPoblacion18a24(loc) {
   if (loc.p_18a24 === null || loc.p_18a24 === undefined) {
-    const etiqueta = loc.etiqueta_18a24 || "Sin dato";
+    const etiqueta = loc.mensaje || "Sin dato";
     const clase = loc.estado_18a24 === "confidencial" ? "badge-confidencial" : "badge-sin-dato";
     return `<span class="${clase}">${escaparHtml(etiqueta)}</span>`;
   }
@@ -328,17 +331,18 @@ document.getElementById("form-localidad").addEventListener("submit", async (e) =
   tbody.innerHTML = "";
 
   const params = new URLSearchParams();
-  if (entidad) params.set("entidad", entidad);
+  if (entidad) params.set("estado", entidad);
   if (municipio) params.set("municipio", municipio);
   if (localidad) params.set("localidad", localidad);
 
   try {
-    const resp = await fetch(`/api/localidades?${params.toString()}`);
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      mostrarMensaje(msgEl, data.detail || "No se encontraron localidades con esos filtros.");
+    const data = await consultarApi("/api/localidades/buscar", params);
+    if (!data.resultados.length) {
+      mostrarMensaje(msgEl, "No se encontraron localidades con esos filtros.");
       return;
+    }
+    if (data.hay_mas) {
+      mostrarMensaje(msgEl, `Se muestran las primeras ${data.resultados.length} localidades. Agrega un filtro para precisar la búsqueda.`);
     }
 
     tbody.innerHTML = data.resultados
@@ -358,8 +362,8 @@ document.getElementById("form-localidad").addEventListener("submit", async (e) =
 
     wrapEl.classList.remove("hidden");
   } catch (err) {
-    mostrarMensaje(msgEl, "Error de conexión con la API.");
+    mostrarMensaje(msgEl, err.message);
   }
 });
 
-document.addEventListener("DOMContentLoaded", cargarCatalogoEntidades);
+cargarCatalogoEntidades();

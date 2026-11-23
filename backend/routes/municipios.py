@@ -8,13 +8,26 @@ from ..db import get_connection
 
 router = APIRouter(prefix="/municipios", tags=["Municipios"])
 
-RangoEdad = Literal["0 a 14", "15 a 64", "65 y más"]
+RangoEdad = Literal["0 a 14", "15 a 64", "65 y más", "0 a 2", "18 a 24", "60 y más"]
+
+
+@router.get("/catalogo")
+def listar_municipios(estado: str, conexion: Connection = Depends(get_connection)):
+    consulta = text("""
+        SELECT mun, nom_mun
+        FROM censo.v_indicadores_municipales
+        WHERE lower(nom_ent) = lower(:estado)
+        ORDER BY nom_mun, mun
+    """)
+    filas = conexion.execute(consulta, {"estado": estado.strip()}).mappings()
+    return [dict(fila) for fila in filas]
 
 
 def _buscar_municipio(conexion: Connection, estado: str, municipio: str):
     consulta = text("""
         SELECT cvegeo, entidad, mun, nom_ent, nom_mun,
-               pob0_14, pob15_64, pob65_mas, graproes
+               pobtot, pob0_14, pob15_64, pob65_mas, p_0a2, p_18a24, p_60ymas,
+               graproes, vph_inter
         FROM censo.v_indicadores_municipales
         WHERE lower(nom_ent) = lower(:estado)
           AND (lower(nom_mun) = lower(:municipio) OR mun = :municipio)
@@ -52,10 +65,14 @@ def consultar_municipio(
         "mun": fila["mun"],
         "nom_ent": fila["nom_ent"],
         "nom_mun": fila["nom_mun"],
+        "pobtot": fila["pobtot"],
+        "graproes": fila["graproes"],
+        "vph_inter": fila["vph_inter"],
         "grupos_edad": grupos,
     }
     if rango_edad is not None:
-        respuesta.update(rango_edad=rango_edad, poblacion=grupos[rango_edad])
+        rangos = {**grupos, "0 a 2": fila["p_0a2"], "18 a 24": fila["p_18a24"], "60 y más": fila["p_60ymas"]}
+        respuesta.update(rango_edad=rango_edad, poblacion=rangos[rango_edad])
     return respuesta
 
 
@@ -74,5 +91,8 @@ def comparar_escolaridad(
             "nom_ent": fila["nom_ent"],
             "nom_mun": fila["nom_mun"],
             "graproes": fila["graproes"],
+            "pobtot": fila["pobtot"],
+            "pob15_64": fila["pob15_64"],
+            "vph_inter": fila["vph_inter"],
         })
     return {"criterio": "Nivel educativo", "municipios": municipios}
