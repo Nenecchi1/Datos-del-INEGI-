@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Censo México 2020 — INEGI</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <h1>Censo México 2020</h1>
+      <p>Portal de consulta de indicadores demográficos, educativos y de localidades (ITER — INEGI)</p>
+    </div>
+  </header>
+
+  <nav class="tabs container" aria-label="Secciones del portal">
+    <button id="tab-estatal" class="tab-btn active" data-panel="panel-estatal" type="button">
+      Consulta Estatal
+    </button>
+    <button id="tab-municipal" class="tab-btn" data-panel="panel-municipal" type="button">
+      Municipios y Gráficas
+    </button>
+    <button id="tab-comparativa" class="tab-btn" data-panel="panel-comparativa" type="button">
+      Comparación Municipal
+    </button>
+    <button id="tab-localidades" class="tab-btn" data-panel="panel-localidades" type="button">
+      Localidades
+    </button>
+  </nav>
+
+  <main class="container">
+    <!-- 1. CONSULTA ESTATAL -->
+    <section id="panel-estatal" class="panel active">
+      <h2>Consulta por Entidad Federativa</h2>
+      <form id="form-estado" class="filter-bar">
+        <div class="field">
+          <label for="input-estado">Entidad federativa</label>
+          <input id="input-estado" type="text" placeholder="Ej. Jalisco, Ciudad de México..." required />
+        </div>
+        <button id="btn-buscar-estado" class="btn-primary" type="submit">Buscar entidad</button>
+      </form>
+
+      <div id="estado-mensaje" class="alert hidden" role="alert"></div>
+      <div id="estado-resultados" class="cards-grid"></div>
+    </section>
+
+    <!-- 2. MUNICIPIOS Y GRÁFICAS -->
+    <section id="panel-municipal" class="panel">
+      <h2>Filtros Municipales y Distribución por Edad</h2>
+      <form id="form-municipio" class="filter-bar">
+        <div class="field">
+          <label for="select-entidad-mun">Entidad</label>
+          <select id="select-entidad-mun" required>
+            <option value="">Selecciona una entidad...</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="select-municipio">Municipio / Alcaldía</label>
+          <select id="select-municipio" required disabled>
+            <option value="">Selecciona primero una entidad...</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="select-rango-edad">Grupo de edad</label>
+          <select id="select-rango-edad">
+            <option value="">Todos los grupos</option>
+            <option value="0_14">0 a 14 años</option>
+            <option value="15_64">15 a 64 años</option>
+            <option value="65_mas">65 años y más</option>
+            <option value="0a2">0 a 2 años</option>
+            <option value="18a24">18 a 24 años</option>
+            <option value="60ymas">60 años y más</option>
+          </select>
+        </div>
+        <button id="btn-consultar-municipio" class="btn-primary" type="submit">Consultar</button>
+      </form>
+
+      <div id="municipio-mensaje" class="alert hidden" role="alert"></div>
+
+      <div id="municipio-detalle" class="hidden">
+        <div id="rango-destacado" class="highlight-box hidden"></div>
+
+        <div class="split-grid">
+          <div class="card">
+            <h3>Distribución por grupos de edad</h3>
+            <div class="chart-wrap">
+              <canvas id="grafica-edades"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Tabla de indicadores municipales</h3>
+            <table id="tabla-municipio" class="data-table">
+              <thead>
+                <tr>
+                  <th>Indicador</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. COMPARACIÓN MUNICIPAL -->
+    <section id="panel-comparativa" class="panel">
+      <h2>Comparación de Escolaridad entre Municipios</h2>
+      <form id="form-comparar" class="filter-bar">
+        <div class="field">
+          <label for="comp-entidad">Entidad</label>
+          <select id="comp-entidad" required>
+            <option value="">Selecciona una entidad...</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="comp-mun-1">Primer municipio</label>
+          <select id="comp-mun-1" required disabled>
+            <option value="">Selecciona un municipio...</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="comp-mun-2">Segundo municipio</label>
+          <select id="comp-mun-2" required disabled>
+            <option value="">Selecciona un municipio...</option>
+          </select>
+        </div>
+        <button id="btn-comparar" class="btn-primary" type="submit">Comparar</button>
+      </form>
+
+      <div id="comparativa-mensaje" class="alert hidden" role="alert"></div>
+      <div id="comparativa-resultados" class="cards-grid"></div>
+    </section>
+
+    <!-- 4. LOCALIDADES -->
+    <section id="panel-localidades" class="panel">
+      <h2>Consulta de Localidades y Reserva INEGI</h2>
+      <form id="form-localidad" class="filter-bar">
+        <div class="field">
+          <label for="loc-entidad">Entidad</label>
+          <input id="loc-entidad" type="text" placeholder="Ej. Jalisco" />
+        </div>
+        <div class="field">
+          <label for="loc-municipio">Municipio</label>
+          <input id="loc-municipio" type="text" placeholder="Ej. Acatic" />
+        </div>
+        <div class="field">
+          <label for="loc-nombre">Localidad</label>
+          <input id="loc-nombre" type="text" placeholder="Ej. Alacates" />
+        </div>
+        <button id="btn-buscar-localidad" class="btn-primary" type="submit">Buscar localidad</button>
+      </form>
+
+      <div id="localidad-mensaje" class="alert hidden" role="alert"></div>
+
+      <div id="localidad-tabla-wrap" class="card hidden">
+        <div class="table-responsive">
+          <table id="tabla-localidades" class="data-table">
+            <thead>
+              <tr>
+                <th>Localidad</th>
+                <th>Municipio</th>
+                <th>Entidad</th>
+                <th>Ámbito</th>
+                <th>Población total</th>
+                <th>Población 18 a 24 años</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
